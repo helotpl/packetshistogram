@@ -7,25 +7,42 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"log"
+	"sync"
 	"time"
 )
 
 type counts struct {
-	ip        uint64
-	nonip     uint64
-	tcp       uint64
-	udp       uint64
-	nontcpudp uint64
-	all       uint64
-	sizeHist  map[int]uint64
+	mu          sync.Mutex
+	ip          uint64
+	nonip       uint64
+	tcp         uint64
+	udp         uint64
+	nontcpudp   uint64
+	all         uint64
+	sizeHistTCP map[int]uint64
+	sizeHistUDP map[int]uint64
 }
 
 func (c *counts) print() {
 	fmt.Printf("%d,%d,%d,%d,%d,%d", c.ip, c.nonip, c.tcp, c.udp, c.nontcpudp, c.all)
 	for i := 0; i < 16; i++ {
-		fmt.Printf(",%d", c.sizeHist[i])
+		fmt.Printf(",%d", c.sizeHistTCP[i])
+	}
+	for i := 0; i < 16; i++ {
+		fmt.Printf(",%d", c.sizeHistUDP[i])
 	}
 	fmt.Println("")
+}
+
+func (c *counts) clear() {
+	c.ip = 0
+	c.nonip = 0
+	c.tcp = 0
+	c.udp = 0
+	c.nontcpudp = 0
+	c.all = 0
+	c.sizeHistUDP = make(map[int]uint64)
+	c.sizeHistTCP = make(map[int]uint64)
 }
 
 func (c *counts) printt(t time.Time) {
@@ -33,9 +50,12 @@ func (c *counts) printt(t time.Time) {
 	c.print()
 }
 
-func doEvery(d time.Duration, f func(time.Time)) {
+func doEvery(d time.Duration, c *counts) {
 	for x := range time.Tick(d) {
-		f(x)
+		c.mu.Lock()
+		c.printt(x)
+		c.clear()
+		c.mu.Unlock()
 	}
 }
 
@@ -49,6 +69,7 @@ func main() {
 	decoded := make([]gopacket.LayerType, 0, 5)
 
 	intf := flag.String("int", "en0", "name of interface to capture packets")
+	duration := flag.Int("dur", 5, "time in seconds between dumps of stats")
 	flag.Parse()
 
 	fmt.Println(*intf)
@@ -61,9 +82,19 @@ func main() {
 
 	source := gopacket.NewPacketSource(handle, handle.LinkType())
 
+	fmt.Print("time,ip,nonip,tcp,udp,nontcpudp,all")
+	for i := 0; i < 16; i++ {
+		fmt.Printf(",t%d", i)
+	}
+	for i := 0; i < 16; i++ {
+		fmt.Printf(",u%d", i)
+	}
+	fmt.Println("")
+
 	counter := counts{}
-	counter.sizeHist = make(map[int]uint64)
-	doEvery(1000*time.Millisecond, counter.printt)
+	counter.sizeHistTCP = make(map[int]uint64)
+	counter.sizeHistUDP = make(map[int]uint64)
+	go doEvery(1000*time.Duration(*duration)*time.Millisecond, &counter)
 	parser.IgnoreUnsupported = true
 	for {
 		packet, err := source.NextPacket()
@@ -71,7 +102,12 @@ func main() {
 			log.Fatal(err)
 		}
 		//fmt.Println(len(packet.Data()))
-		counter.sizeHist[len(packet.Data())/100] += 1
+		pktSize := len(packet.Data())
+		histSize := pktSize / 100
+		if histSize > 15 {
+			histSize = 15
+		}
+		//counter.sizeHist[len(packet.Data())/100] += 1
 		err = parser.DecodeLayers(packet.Data(), &decoded)
 		if err != nil {
 			log.Fatal(err)
@@ -93,11 +129,14 @@ func main() {
 				ip = true
 			}
 		}
+		counter.mu.Lock()
 		if tcp {
 			counter.tcp += 1
+			counter.sizeHistTCP[histSize] += 1
 		}
 		if udp {
 			counter.udp += 1
+			counter.sizeHistUDP[histSize] += 1
 		}
 		if !tcp && !udp {
 			counter.nontcpudp += 1
@@ -108,6 +147,7 @@ func main() {
 			counter.nonip += 1
 		}
 		counter.all += 1
+		counter.mu.Unlock()
 
 		//counter.print()
 	}
