@@ -73,8 +73,6 @@ func main() {
 	volume := flag.Bool("v", false, "when set than program counts sum sizes of packets, unset = counts of packets")
 	flag.Parse()
 
-	fmt.Println(*intf)
-
 	handle, err := pcap.OpenLive(*intf, 262144, true, pcap.BlockForever)
 	if err != nil {
 		log.Fatal(err)
