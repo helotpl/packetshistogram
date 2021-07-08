@@ -96,6 +96,7 @@ func main() {
 	counter.sizeHistUDP = make(map[int]uint64)
 	go doEvery(1000*time.Duration(*duration)*time.Millisecond, &counter)
 	parser.IgnoreUnsupported = true
+	parser.IgnorePanic = true
 	for {
 		packet, err := source.NextPacket()
 		if err != nil {
@@ -110,7 +111,7 @@ func main() {
 		//counter.sizeHist[len(packet.Data())/100] += 1
 		err = parser.DecodeLayers(packet.Data(), &decoded)
 		if err != nil {
-			log.Fatal(err)
+			continue
 		}
 
 		tcp := false
