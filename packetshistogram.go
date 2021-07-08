@@ -12,15 +12,17 @@ import (
 )
 
 type counts struct {
-	mu          sync.Mutex
-	ip          uint64
-	nonip       uint64
-	tcp         uint64
-	udp         uint64
-	nontcpudp   uint64
-	all         uint64
-	sizeHistTCP map[int]uint64
-	sizeHistUDP map[int]uint64
+	mu            sync.Mutex
+	ip            uint64
+	nonip         uint64
+	tcp           uint64
+	udp           uint64
+	nontcpudp     uint64
+	all           uint64
+	sizeHistTCP   map[int]uint64
+	sizeHistUDP   map[int]uint64
+	volumeHistTCP map[int]uint64
+	volumeHistUDP map[int]uint64
 }
 
 func (c *counts) print() {
@@ -30,6 +32,12 @@ func (c *counts) print() {
 	}
 	for i := 0; i < 16; i++ {
 		fmt.Printf(",%d", c.sizeHistUDP[i])
+	}
+	for i := 0; i < 16; i++ {
+		fmt.Printf(",%d", c.volumeHistTCP[i])
+	}
+	for i := 0; i < 16; i++ {
+		fmt.Printf(",%d", c.volumeHistUDP[i])
 	}
 	fmt.Println("")
 }
@@ -43,6 +51,8 @@ func (c *counts) clear() {
 	c.all = 0
 	c.sizeHistUDP = make(map[int]uint64)
 	c.sizeHistTCP = make(map[int]uint64)
+	c.volumeHistUDP = make(map[int]uint64)
+	c.volumeHistTCP = make(map[int]uint64)
 }
 
 func (c *counts) printt(t time.Time) {
@@ -89,11 +99,16 @@ func main() {
 	for i := 0; i < 16; i++ {
 		fmt.Printf(",u%d", i)
 	}
+	for i := 0; i < 16; i++ {
+		fmt.Printf(",vt%d", i)
+	}
+	for i := 0; i < 16; i++ {
+		fmt.Printf(",vu%d", i)
+	}
 	fmt.Println("")
 
 	counter := counts{}
-	counter.sizeHistTCP = make(map[int]uint64)
-	counter.sizeHistUDP = make(map[int]uint64)
+	counter.clear()
 	go doEvery(1000*time.Duration(*duration)*time.Millisecond, &counter)
 	parser.IgnoreUnsupported = true
 	parser.IgnorePanic = true
@@ -134,10 +149,12 @@ func main() {
 		if tcp {
 			counter.tcp += 1
 			counter.sizeHistTCP[histSize] += 1
+			counter.volumeHistTCP[histSize] += uint64(pktSize)
 		}
 		if udp {
 			counter.udp += 1
 			counter.sizeHistUDP[histSize] += 1
+			counter.volumeHistUDP[histSize] += uint64(pktSize)
 		}
 		if !tcp && !udp {
 			counter.nontcpudp += 1
