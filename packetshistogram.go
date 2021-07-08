@@ -12,17 +12,15 @@ import (
 )
 
 type counts struct {
-	mu            sync.Mutex
-	ip            uint64
-	nonip         uint64
-	tcp           uint64
-	udp           uint64
-	nontcpudp     uint64
-	all           uint64
-	sizeHistTCP   map[int]uint64
-	sizeHistUDP   map[int]uint64
-	volumeHistTCP map[int]uint64
-	volumeHistUDP map[int]uint64
+	mu          sync.Mutex
+	ip          uint64
+	nonip       uint64
+	tcp         uint64
+	udp         uint64
+	nontcpudp   uint64
+	all         uint64
+	sizeHistTCP map[int]uint64
+	sizeHistUDP map[int]uint64
 }
 
 func (c *counts) print() {
@@ -32,12 +30,6 @@ func (c *counts) print() {
 	}
 	for i := 0; i < 16; i++ {
 		fmt.Printf(",%d", c.sizeHistUDP[i])
-	}
-	for i := 0; i < 16; i++ {
-		fmt.Printf(",%d", c.volumeHistTCP[i])
-	}
-	for i := 0; i < 16; i++ {
-		fmt.Printf(",%d", c.volumeHistUDP[i])
 	}
 	fmt.Println("")
 }
@@ -51,8 +43,6 @@ func (c *counts) clear() {
 	c.all = 0
 	c.sizeHistUDP = make(map[int]uint64)
 	c.sizeHistTCP = make(map[int]uint64)
-	c.volumeHistUDP = make(map[int]uint64)
-	c.volumeHistTCP = make(map[int]uint64)
 }
 
 func (c *counts) printt(t time.Time) {
@@ -80,6 +70,7 @@ func main() {
 
 	intf := flag.String("int", "en0", "name of interface to capture packets")
 	duration := flag.Int("dur", 5, "time in seconds between dumps of stats")
+	volume := flag.Bool("v", false, "when set than program counts sum sizes of packets, unset = counts of packets")
 	flag.Parse()
 
 	fmt.Println(*intf)
@@ -94,16 +85,19 @@ func main() {
 
 	fmt.Print("time,ip,nonip,tcp,udp,nontcpudp,all")
 	for i := 0; i < 16; i++ {
-		fmt.Printf(",t%d", i)
+		if *volume {
+			fmt.Printf(",vt%d", i)
+
+		} else {
+			fmt.Printf(",t%d", i)
+		}
 	}
 	for i := 0; i < 16; i++ {
-		fmt.Printf(",u%d", i)
-	}
-	for i := 0; i < 16; i++ {
-		fmt.Printf(",vt%d", i)
-	}
-	for i := 0; i < 16; i++ {
-		fmt.Printf(",vu%d", i)
+		if *volume {
+			fmt.Printf(",vu%d", i)
+		} else {
+			fmt.Printf(",u%d", i)
+		}
 	}
 	fmt.Println("")
 
@@ -117,7 +111,6 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		//fmt.Println(len(packet.Data()))
 		pktSize := len(packet.Data())
 		histSize := pktSize / 100
 		if histSize > 15 {
@@ -146,32 +139,43 @@ func main() {
 			}
 		}
 		counter.mu.Lock()
-		if tcp {
-			counter.tcp += 1
-			counter.sizeHistTCP[histSize] += 1
-			counter.volumeHistTCP[histSize] += uint64(pktSize)
-		}
-		if udp {
-			counter.udp += 1
-			counter.sizeHistUDP[histSize] += 1
-			counter.volumeHistUDP[histSize] += uint64(pktSize)
-		}
-		if !tcp && !udp {
-			counter.nontcpudp += 1
-		}
-		if ip {
-			counter.ip += 1
+		if *volume {
+			if tcp {
+				counter.tcp += uint64(pktSize)
+				counter.sizeHistTCP[histSize] += uint64(pktSize)
+			}
+			if udp {
+				counter.udp += uint64(pktSize)
+				counter.sizeHistUDP[histSize] += uint64(pktSize)
+			}
+			if !tcp && !udp {
+				counter.nontcpudp += uint64(pktSize)
+			}
+			if ip {
+				counter.ip += uint64(pktSize)
+			} else {
+				counter.nonip += uint64(pktSize)
+			}
+			counter.all += uint64(pktSize)
 		} else {
-			counter.nonip += 1
+			if tcp {
+				counter.tcp += 1
+				counter.sizeHistTCP[histSize] += 1
+			}
+			if udp {
+				counter.udp += 1
+				counter.sizeHistUDP[histSize] += 1
+			}
+			if !tcp && !udp {
+				counter.nontcpudp += 1
+			}
+			if ip {
+				counter.ip += 1
+			} else {
+				counter.nonip += 1
+			}
+			counter.all += 1
 		}
-		counter.all += 1
 		counter.mu.Unlock()
-
-		//counter.print()
 	}
-	//for packetData := range source.Packets() {
-	//	if err := parser.DecodeLayers(packetData, &decoded); err != nil {
-	//
-	//	}
-	//}
 }
